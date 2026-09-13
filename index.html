@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>متابعة قطة العشيان</title>
+  <style>
+    :root { --primary: #0284c7; --bg: #f8fafc; --card: #ffffff; --text: #1e293b; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); margin: 0; padding: 15px; color: var(--text); }
+    .container { max-width: 650px; margin: 0 auto; }
+    h1 { font-size: 20px; text-align: center; margin-bottom: 20px; }
+    
+    /* بطاقات الإحصائيات */
+    .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+    .stat-card { background: var(--card); padding: 15px; border-radius: 12px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .stat-val { font-size: 22px; font-weight: bold; color: var(--primary); margin-top: 5px; }
+    .stat-lbl { font-size: 13px; color: #64748b; }
+
+    /* نموذج الإضافة */
+    .form-card { background: var(--card); padding: 18px; border-radius: 14px; box-shadow: 0 2px 6px rgba(0,0,0,0.06); margin-bottom: 25px; }
+    .form-card h2 { font-size: 16px; margin-top: 0; margin-bottom: 12px; color: #0f172a; }
+    .form-group { margin-bottom: 12px; }
+    label { display: block; font-size: 13px; margin-bottom: 4px; color: #475569; }
+    input, select { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; box-sizing: border-box; font-size: 14px; }
+    .btn { width: 100%; background: var(--primary); color: white; border: none; padding: 12px; border-radius: 8px; font-weight: bold; font-size: 15px; cursor: pointer; transition: 0.2s; }
+    .btn:disabled { background: #94a3b8; }
+
+    /* جدول العرض المتجاوب */
+    .table-container { background: var(--card); border-radius: 14px; padding: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; min-width: 480px; font-size: 13px; }
+    th { background: #f1f5f9; padding: 10px; text-align: center; border-radius: 6px; }
+    td { padding: 10px; text-align: center; border-bottom: 1px solid #f1f5f9; }
+    .loading { text-align: center; color: #64748b; padding: 20px; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>لوحة متابعة قطة العشيان</h1>
+
+    <!-- الإحصائيات السريعة -->
+    <div class="stats">
+      <div class="stat-card">
+        <div class="stat-lbl">إجمالي المصاريف</div>
+        <div class="stat-val" id="totalCost">0 ر.س</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-lbl">عدد العشيان المسجلة</div>
+        <div class="stat-val" id="totalMeals">0</div>
+      </div>
+    </div>
+
+    <!-- نموذج إضافة عشاء جديد من الجوال -->
+    <div class="form-card">
+      <h2>+ تسجيل عشاء جديد</h2>
+      <form id="expenseForm">
+        <div class="form-group">
+          <label>اسم المصوت / المشتري</label>
+          <input type="text" id="buyer" required placeholder="مثال: علي الرشدان">
+        </div>
+        <div class="form-group">
+          <label>التاريخ</label>
+          <input type="date" id="date" required>
+        </div>
+        <div style="display: flex; gap: 10px;">
+          <div class="form-group" style="flex: 1;">
+            <label>الدجاج</label>
+            <input type="number" id="chicken" value="2" min="0">
+          </div>
+          <div class="form-group" style="flex: 1;">
+            <label>أكواب الرز</label>
+            <input type="number" id="rice" value="2" min="0">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>المبلغ الإجمالي (ر.س)</label>
+          <input type="number" id="cost" required placeholder="مثال: 65">
+        </div>
+        <button type="submit" class="btn" id="submitBtn">حفظ وإرسال للجدول</button>
+      </form>
+    </div>
+
+    <!-- جدول الوجبات الحالية -->
+    <h2 style="font-size: 16px; margin-bottom: 10px;">سجل العشيان (مباشر ومحدث)</h2>
+    <div class="table-container">
+      <div id="loader" class="loading">جاري جلب أحدث البيانات من Google Sheets...</div>
+      <table id="dataTable" style="display: none;">
+        <thead>
+          <tr id="tableHead"></tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    // ضع هنا رابط Web App الخاص بك
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwqNcyCruLwzuWSgDclzPnxI1WUNew51xkGamfBqn0GqS-WBXyy2t_qyrt3El6cb1rZCQ/exec";
+
+    // جلب البيانات من Google Sheets
+    async function loadData() {
+      try {
+        const res = await fetch(SCRIPT_URL);
+        const data = await res.json();
+        renderDashboard(data.headers, data.rows);
+      } catch (e) {
+        document.getElementById('loader').innerText = "حدث خطأ أثناء تحميل البيانات.";
+      }
+    }
+
+    function renderDashboard(headers, rows) {
+      document.getElementById('loader').style.display = 'none';
+      document.getElementById('dataTable').style.display = 'table';
+
+      // عرض رؤوس الأعمدة الرئيسية (أول 7 أعمدة)
+      const headTr = document.getElementById('tableHead');
+      headTr.innerHTML = headers.slice(0, 7).map(h => `<th>${h}</th>`).join('');
+
+      // عرض الصفوف
+      const bodyTbody = document.getElementById('tableBody');
+      bodyTbody.innerHTML = rows.map(r => `
+        <tr>${r.slice(0, 7).map(val => `<td>${val !== '' ? val : '-'}</td>`).join('')}</tr>
+      `).join('');
+
+      // حساب الإحصائيات
+      document.getElementById('totalMeals').innerText = rows.length;
+      let total = 0;
+      rows.forEach(r => {
+        const val = parseFloat(r[6]); // عمود المبلغ
+        if (!isNaN(val)) total += val;
+      });
+      document.getElementById('totalCost').innerText = total.toLocaleString() + ' ر.س';
+    }
+
+    // إرسال البيانات إلى Google Sheets
+    document.getElementById('expenseForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('submitBtn');
+      btn.disabled = true;
+      btn.innerText = "جاري الحفظ...";
+
+      const payload = {
+        buyer: document.getElementById('buyer').value,
+        date: document.getElementById('date').value,
+        chicken: document.getElementById('chicken').value,
+        rice: document.getElementById('rice').value,
+        cost: document.getElementById('cost').value
+      };
+
+      try {
+        await fetch(SCRIPT_URL, {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        });
+        alert('تمت إضافة العشاء بنجاح!');
+        document.getElementById('expenseForm').reset();
+        loadData(); // إعادة تحديث البيانات
+      } catch (err) {
+        alert('تم إرسال البيانات (ستظهر في الجدول خلال لحظات)');
+        loadData();
+      } finally {
+        btn.disabled = false;
+        btn.innerText = "حفظ وإرسال للجدول";
+      }
+    });
+
+    // تعيين تاريخ اليوم تلقائياً وتحميل البيانات عند فتح الصفحة
+    document.getElementById('date').valueAsDate = new Date();
+    loadData();
+  </script>
+</body>
+</html>
